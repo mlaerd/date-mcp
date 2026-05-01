@@ -87,10 +87,11 @@ npm start
 - 8年前: `{"amount": -8, "unit": "years"}`
 
 ### get_time_difference
-指定された日時と現在時刻の差を計算します。
+指定された日時と現在時刻または指定された日時の差を計算します。
 
 パラメータ:
 - `target_date` (必須): 比較対象の日時（ISO 8601形式）
+- `start_date` (オプション): 基準の日時（ISO 8601形式）。指定しない場合は現在時刻を使用
 - `unit` (オプション): 表示する単位（"seconds", "minutes", "hours", "days", "all"、デフォルト: "all"）
 
 ## Claude Codeでの設定
@@ -107,6 +108,21 @@ Claude Codeの設定ファイルに以下を追加します:
   }
 }
 ```
+
+## LM Studio での設定
+
+mcp.jsonに以下を追加します。
+```json
+{
+  "mcpServers": {
+    "date-mcp": {
+      "command": "node",
+      "args": ["/path/to/date-mcp/dist/mcp/main.js"],
+      "cwd": "/path/to/date-mcp"
+    }
+  }
+}
+
 
 ## ライセンス
 
