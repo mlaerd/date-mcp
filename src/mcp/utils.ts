@@ -92,16 +92,21 @@ export function addDuration(dt: DateTime, amount: number, unit: keyof typeof tim
 
 // Calculate the difference between two DateTimes
 export function calculateDifference(dt1: DateTime, dt2: DateTime) {
-  const diff = dt1.diff(dt2, ['years', 'months', 'days', 'hours', 'minutes', 'seconds', 'milliseconds']);
-  
+  // 1. ミリ秒単位での絶対差分を取得（Luxon経由ではなく標準のミリ秒計算が確実）
+  const ms1 = dt1.toMillis();
+  const ms2 = dt2.toMillis();
+  const absDiffMs = Math.abs(ms1 - ms2);
+
+  // 2. 各単位への換算（354〜355日を正しく出すための累積計算）
   return {
-    milliseconds: Math.abs(diff.milliseconds),
-    seconds: Math.floor(Math.abs(diff.as('seconds'))),
-    minutes: Math.floor(Math.abs(diff.as('minutes'))),
-    hours: Math.floor(Math.abs(diff.as('hours'))),
-    days: Math.floor(Math.abs(diff.as('days'))),
-    weeks: Math.floor(Math.abs(diff.as('weeks'))),
-    months: Math.floor(Math.abs(diff.as('months'))),
-    years: Math.floor(Math.abs(diff.as('years'))),
+    milliseconds: absDiffMs,
+    seconds: Math.floor(absDiffMs / 1000),
+    minutes: Math.floor(absDiffMs / (1000 * 60)),
+    hours: Math.floor(absDiffMs / (1000 * 60 * 60)),
+    days: Math.floor(absDiffMs / (1000 * 60 * 60 * 24)),
+    weeks: Math.floor(absDiffMs / (1000 * 60 * 60 * 24 * 7)),
+    // 月と年はカレンダー計算が必要なため Luxon の単一単位 diff を使用
+    months: Math.floor(Math.abs(dt1.diff(dt2, 'months').months)),
+    years: Math.floor(Math.abs(dt1.diff(dt2, 'years').years)),
   };
 }

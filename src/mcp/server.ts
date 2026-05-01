@@ -18,25 +18,25 @@ export function createDateMcpServer(timezone: string): McpServer {
     version: '1.0.0'
   });
 
-  // Register tools
-  server.tool(
+  const s: any = server;
+
+  // -----------------------------
+  // get_current_time
+  // -----------------------------
+  s.tool(
     'get_current_time',
-    'Get current date and time. Provides time information in multiple formats to help AI agents correctly understand temporal context.',
+    'Get current date and time.',
     {
-      timezone: z.string().optional().describe('Timezone (e.g., "Asia/Tokyo", "America/New_York"). If not specified, uses the server-configured timezone.'),
-      locale: z.string().default('ja-JP').optional().describe('Locale (e.g., "ja-JP", "en-US"). Used for human-readable format display.')
+      timezone: z.string().optional(),
+      locale: z.string().default('ja-JP').optional()
     },
-    async (args) => {
+    async (args: any) => {
       const { timezone: requestTimezone, locale = 'ja-JP' } = args;
       const effectiveTimezone = requestTimezone || timezone;
       
       try {
-        // Get current time in the effective timezone
         const now = DateTime.now().setZone(effectiveTimezone);
-        
-        if (!now.isValid) {
-          throw new Error(`Invalid timezone: ${effectiveTimezone}`);
-        }
+        if (!now.isValid) throw new Error(`Invalid timezone: ${effectiveTimezone}`);
         
         const timeInfo = {
           current: formatDateInfo(now, locale),
@@ -46,14 +46,14 @@ export function createDateMcpServer(timezone: string): McpServer {
 
         return {
           content: [{
-            type: 'text' as const,
+            type: 'text',
             text: JSON.stringify(timeInfo, null, 2)
           }]
         };
       } catch (error) {
         return {
           content: [{
-            type: 'text' as const,
+            type: 'text',
             text: `Error occurred: ${error instanceof Error ? error.message : 'Unknown error'}`
           }]
         };
@@ -61,49 +61,47 @@ export function createDateMcpServer(timezone: string): McpServer {
     }
   );
 
-  server.tool(
+  // -----------------------------
+  // calculate_date
+  // -----------------------------
+  s.tool(
     'calculate_date',
-    'Calculate a date/time by adding or subtracting a specified duration from now or a given date. Examples: 1 day later, 3 days ago, 6 hours later, 2 weeks later, 8 years ago',
+    'Calculate a date/time by adding or subtracting a duration.',
     {
-      amount: z.number().describe('Amount to add or subtract (positive for future, negative for past)'),
-      unit: z.enum(['seconds', 'minutes', 'hours', 'days', 'weeks', 'months', 'years']).describe('Time unit'),
-      base_date: z.string().optional().describe('Base date/time (ISO 8601 format). If not specified, uses current time'),
-      base_timezone: z.string().optional().describe('Timezone for base_date interpretation if ISO string lacks timezone (e.g., "Asia/Tokyo"). ISO timezone takes precedence if present.'),
-      target_timezone: z.string().optional().describe('Target timezone for output (e.g., "Asia/Tokyo", "America/New_York"). If not specified, uses the server-configured timezone.'),
-      locale: z.string().default('ja-JP').optional().describe('Locale (e.g., "ja-JP", "en-US")')
+      amount: z.number(),
+      unit: z.enum(['seconds', 'minutes', 'hours', 'days', 'weeks', 'months', 'years']),
+      base_date: z.string().optional(),
+      base_timezone: z.string().optional(),
+      target_timezone: z.string().optional(),
+      locale: z.string().default('ja-JP').optional()
     },
-    async (args) => {
+    async (args: any) => {
       const { amount, unit, base_date, base_timezone, target_timezone: requestTimezone, locale = 'ja-JP' } = args;
       const effectiveTimezone = requestTimezone || timezone;
       
       try {
-        // Parse base date or use current time
         let baseDateTime: DateTime;
+
         if (base_date) {
           const parsed = parseDateWithTimezone(base_date, base_timezone || timezone);
-          if (!parsed || !parsed.isValid) {
-            throw new Error('Invalid date format');
-          }
+          if (!parsed || !parsed.isValid) throw new Error('Invalid date format');
           baseDateTime = parsed;
         } else {
           baseDateTime = DateTime.now().setZone(timezone);
         }
 
-        // Add the duration
         const resultDateTime = addDuration(baseDateTime, amount, unit);
-        
-        // Convert to target timezone
         const resultInTargetZone = resultDateTime.setZone(effectiveTimezone);
-        
+
         const direction = amount > 0 ? 'later' : 'ago';
         const absAmount = Math.abs(amount);
-        const unitName = timeUnits[unit] || '';
+        const unitName = timeUnits[unit as keyof typeof timeUnits];
 
         const result = {
           calculation: {
             base_date: baseDateTime.toISO() || '',
-            amount: amount,
-            unit: unit,
+            amount,
+            unit,
             description: `${absAmount} ${unitName}${absAmount !== 1 ? 's' : ''} ${direction}`
           },
           result: formatDateInfo(resultInTargetZone, locale),
@@ -116,14 +114,14 @@ export function createDateMcpServer(timezone: string): McpServer {
 
         return {
           content: [{
-            type: 'text' as const,
+            type: 'text',
             text: JSON.stringify(result, null, 2)
           }]
         };
       } catch (error) {
         return {
           content: [{
-            type: 'text' as const,
+            type: 'text',
             text: `Error occurred: ${error instanceof Error ? error.message : 'Unknown error'}`
           }]
         };
@@ -131,56 +129,72 @@ export function createDateMcpServer(timezone: string): McpServer {
     }
   );
 
-  server.tool(
+  // -----------------------------
+  // get_time_difference
+  // -----------------------------
+  s.tool(
     'get_time_difference',
-    'Calculate the difference between a specified date/time and the current time. Useful for understanding relationships with past or future dates.',
+    'Calculate the difference between a date and now or a custom start date.',
     {
-      reference_date: z.string().describe('Reference date/time for comparison (ISO 8601 format)'),
-      reference_timezone: z.string().optional().describe('Timezone for reference_date interpretation if ISO string lacks timezone (e.g., "Asia/Tokyo"). ISO timezone takes precedence if present.'),
-      unit: z.enum(['seconds', 'minutes', 'hours', 'days', 'all']).default('all').describe('Unit to display'),
-      target_timezone: z.string().optional().describe('Target timezone for output (e.g., "Asia/Tokyo", "America/New_York"). If not specified, uses the server-configured timezone.'),
-      locale: z.string().default('ja-JP').optional().describe('Locale (e.g., "ja-JP", "en-US")')
+      reference_date: z.string(),
+      reference_timezone: z.string().optional(),
+      start_date: z.string().optional(),
+      start_timezone: z.string().optional(),
+      unit: z.enum(['seconds', 'minutes', 'hours', 'days', 'all']).default('all'),
+      target_timezone: z.string().optional(),
+      locale: z.string().default('ja-JP').optional()
     },
-    async (args) => {
-      const { reference_date, reference_timezone, unit = 'all', target_timezone: requestTimezone, locale = 'ja-JP' } = args;
+    async (args: any) => {
+      const { 
+        reference_date,
+        reference_timezone,
+        start_date,
+        start_timezone,
+        unit = 'all',
+        target_timezone: requestTimezone,
+        locale = 'ja-JP'
+      } = args;
+
       const effectiveTimezone = requestTimezone || timezone;
-      
+
       try {
-        // Get current time in effective timezone
-        const now = DateTime.now().setZone(effectiveTimezone);
-        
-        // Parse reference date
-        const parsed = parseDateWithTimezone(reference_date, reference_timezone || timezone);
-        if (!parsed || !parsed.isValid) {
-          throw new Error('Invalid date format');
+        // target date
+        const parsedTarget = parseDateWithTimezone(reference_date, reference_timezone || timezone);
+        if (!parsedTarget || !parsedTarget.isValid) throw new Error('Invalid reference date format');
+        const target = parsedTarget.setZone(effectiveTimezone);
+  
+        // start date (optional)
+        let start: DateTime;
+        if (start_date) {
+          const parsedStart = parseDateWithTimezone(start_date, start_timezone || timezone);
+          if (!parsedStart || !parsedStart.isValid) throw new Error('Invalid start date format');
+          start = parsedStart.setZone(effectiveTimezone);
+        } else {
+          start = DateTime.now().setZone(effectiveTimezone);
         }
-        
-        // Convert to effective timezone for display
-        const target = parsed.setZone(effectiveTimezone);
-        
-        // Calculate differences
-        const diff = calculateDifference(now, target);
-        const isPast = now > target;
-        
+
+        const diff = calculateDifference(start, target);
+        const isPast = start > target;
+
         const result = {
           reference_date: formatDateInfo(target, locale),
-          current_date: formatDateInfo(now, locale),
+          start_date: formatDateInfo(start, locale),
           is_past: isPast,
           relative: isPast ? 'past' : 'future',
           difference: unit === 'all' ? diff : { [unit]: diff[unit as keyof typeof diff] },
-          human_readable: getHumanReadableDiff(target, now)
+          human_readable: getHumanReadableDiff(target, start)
         };
 
         return {
           content: [{
-            type: 'text' as const,
+            type: 'text',
             text: JSON.stringify(result, null, 2)
           }]
         };
       } catch (error) {
         return {
           content: [{
-            type: 'text' as const,
+            type: 'text',
             text: `Error occurred: ${error instanceof Error ? error.message : 'Unknown error'}`
           }]
         };
@@ -188,32 +202,28 @@ export function createDateMcpServer(timezone: string): McpServer {
     }
   );
 
-  server.tool(
+  // -----------------------------
+  // convert_timezone
+  // -----------------------------
+  s.tool(
     'convert_timezone',
-    'Convert a date/time to a different timezone. The input date should include timezone information in the ISO string.',
+    'Convert a date/time to a different timezone.',
     {
-      source_date: z.string().describe('Date/time to convert (ISO 8601 format)'),
-      source_timezone: z.string().optional().describe('Timezone for source_date interpretation if ISO string lacks timezone (e.g., "Asia/Tokyo"). ISO timezone takes precedence if present.'),
-      target_timezone: z.string().describe('Target timezone (e.g., "Asia/Tokyo", "America/New_York")'),
-      locale: z.string().default('ja-JP').optional().describe('Locale (e.g., "ja-JP", "en-US")')
+      source_date: z.string(),
+      source_timezone: z.string().optional(),
+      target_timezone: z.string(),
+      locale: z.string().default('ja-JP').optional()
     },
-    async (args) => {
+    async (args: any) => {
       const { source_date, source_timezone, target_timezone, locale = 'ja-JP' } = args;
       
       try {
-        // Parse source date
         const parsed = parseDateWithTimezone(source_date, source_timezone || timezone);
-        if (!parsed || !parsed.isValid) {
-          throw new Error('Invalid date format');
-        }
-        
-        // Convert to target timezone
+        if (!parsed || !parsed.isValid) throw new Error('Invalid date format');
+
         const targetDateTime = parsed.setZone(target_timezone);
-        
-        if (!targetDateTime.isValid) {
-          throw new Error(`Invalid target timezone: ${target_timezone}`);
-        }
-        
+        if (!targetDateTime.isValid) throw new Error(`Invalid target timezone: ${target_timezone}`);
+
         const result = {
           input: {
             iso: parsed.toISO() || '',
@@ -230,14 +240,14 @@ export function createDateMcpServer(timezone: string): McpServer {
 
         return {
           content: [{
-            type: 'text' as const,
+            type: 'text',
             text: JSON.stringify(result, null, 2)
           }]
         };
       } catch (error) {
         return {
           content: [{
-            type: 'text' as const,
+            type: 'text',
             text: `Error occurred: ${error instanceof Error ? error.message : 'Unknown error'}`
           }]
         };
